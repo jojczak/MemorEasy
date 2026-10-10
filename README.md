@@ -1,3 +1,8 @@
+This is a development fork of [MemorEasy](https://github.com/bransoned), containing changes proposed for contribution to the upstream repository.
+
+The original README follows below.
+<hr/>
+
 <!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
 <a id="readme-top"></a>
 <!--
