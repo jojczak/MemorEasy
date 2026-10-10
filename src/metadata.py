@@ -146,44 +146,53 @@ def write_exif(
     if ext == '.jpeg':
         ext = 'jpg'
 
+    has_gps = False
+    lat_f = lon_f = None
     try:
         lat_f = float(lat)
         lon_f = float(lon)
-
-        if not (-90 <= lat_f <= 90):
-            raise ValueError(f"Latitude {lat_f} out of range [-90, 90]")
-        if not (-180 <= lon_f <= 180):
-            raise ValueError(f"Longitude {lon_f} out of range [-180, 180]")
-
-    except Exception as e:
-        raise ValueError(
-            f"Invalid coordinates for '{file_path}' "
-            f"({lat}, {lon}). Skipping EXIF: {e}."
+        has_gps = (
+            -90 <= lat_f <= 90
+            and -180 <= lon_f <= 180
+            and not (lat_f == 0 and lon_f == 0)
         )
+    except (TypeError, ValueError):
+        has_gps = False
 
-    local_dt = utc_str_to_local_dt(date_time_str[:-4], lat_f, lon_f)
+    if has_gps:
+        local_dt = utc_str_to_local_dt(date_time_str[:-4], lat_f, lon_f)
+    else:
+        local_dt = datetime.strptime(
+            date_time_str[:-4], "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=timezone.utc)
+
     local_dt_str = local_dt.strftime("%Y-%m-%d %H:%M:%S")
     offset_str = offset_str_from_dt(local_dt)
 
     # Base command with common tags
-    cmd = [
-        exiftool_path,
-        f"-XMP:GPSLatitude={lat}",
-        f"-XMP:GPSLongitude={lon}",
-    ]
+    cmd = [exiftool_path]
+    if has_gps:
+        cmd.extend([
+            f"-XMP:GPSLatitude={lat}",
+            f"-XMP:GPSLongitude={lon}",
+        ])
 
     # Add format-specific MD tags
     if ext == ".mp4":
         cmd.extend([
+            f"-CreateDate={date_time_str[:-4]}",
+            f"-ModifyDate={date_time_str[:-4]}",
             f"-TrackCreateDate={date_time_str[:-4]}",
             f"-TrackModifyDate={date_time_str[:-4]}",
             f"-MediaCreateDate={date_time_str[:-4]}",
             f"-MediaModifyDate={date_time_str[:-4]}",
-            f"-Keys:GPSCoordinates={lat} {lon}",
         ])
-    elif ext == '.jpg':
-        lat_ref = "N" if float(lat) >= 0 else "S"
-        lon_ref = "E" if float(lon) >= 0 else "W"
+        if has_gps:
+            cmd.extend([
+                f"-Keys:GPSCoordinates={lat} {lon}",
+                f"-QuickTime:GPSCoordinates={lat} {lon}",
+            ])
+    elif ext == ".jpg":
         cmd.extend([
             f"-CreateDate={local_dt_str}",
             f"-ModifyDate={local_dt_str}",
@@ -191,11 +200,16 @@ def write_exif(
             f"-OffsetTime={offset_str}",
             f"-OffsetTimeOriginal={offset_str}",
             f"-OffsetTimeDigitized={offset_str}",
-            f"-GPSLatitude={abs(float(lat))}",
-            f"-GPSLatitudeRef={lat_ref}",
-            f"-GPSLongitude={abs(float(lon))}",
-            f"-GPSLongitudeRef={lon_ref}",
         ])
+        if has_gps:
+            lat_ref = "N" if lat_f >= 0 else "S"
+            lon_ref = "E" if lon_f >= 0 else "W"
+            cmd.extend([
+                f"-GPSLatitude={abs(lat_f)}",
+                f"-GPSLatitudeRef={lat_ref}",
+                f"-GPSLongitude={abs(lon_f)}",
+                f"-GPSLongitudeRef={lon_ref}",
+            ])
 
     cmd.extend(["-overwrite_original", str(file_path)])
 
